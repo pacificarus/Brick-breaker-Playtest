@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brick Breaker — Playtesting Prototype</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===== Gameplay screen ===== -->
+  <div id="screen-game">
+    <div id="hud">
+      <span class="hud-item">💰 <b id="hud-currency">0</b></span>
+      <span class="hud-item">🔮 <b id="hud-meta">0</b></span>
+      <span class="hud-item">Shots: <b id="hud-shots">0</b></span>
+      <span class="hud-item">Best: <b id="hud-best">0</b></span>
+      <button id="hud-speed" title="Ball speed multiplier">x1</button>
+    </div>
+    <div class="game-row">
+      <canvas id="game-canvas" width="420" height="620"></canvas>
+      <div id="ingame-panel"></div>
+    </div>
+    <p class="hint">Move mouse to aim, click to fire. Blocks descend each shot — don't let them reach the line.</p>
+  </div>
+
+  <!-- ===== Death / meta-upgrade screen ===== -->
+  <div id="screen-death" class="hidden">
+    <h2>Run over</h2>
+    <div id="death-stats"></div>
+    <div class="bank">Meta currency: 🔮 <b id="death-meta-bank">0</b></div>
+    <div id="meta-panel"></div>
+    <button id="btn-next-run" class="big">Start next run ▶</button>
+  </div>
+
+  <!-- ===== Playtesting drawer ===== -->
+  <button id="devmenu-toggle" title="Playtesting menu">⚙</button>
+  <div id="devmenu" class="hidden">
+    <h3>Playtesting menu</h3>
+    <p class="fine">Edits apply live and persist across reloads. "Reset game" returns to config.js defaults.</p>
+    <div id="devmenu-body"></div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="state.js"></script>
+  <script src="upgrades.js"></script>
+  <script src="game.js"></script>
+  <script src="devmenu.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

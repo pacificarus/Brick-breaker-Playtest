@@ -36,6 +36,7 @@ BB.Upgrades = (function () {
                       c.inGame.angle.maxAngle),
       bounces: c.inGame.bounces.base + bounceStep * r.bounces,
       bounceStep,
+      guideLen: c.inGame.guide.base + c.inGame.guide.step * r.guide,
 
       ballsPerShot: c.meta.ballsPerShot.base + c.meta.ballsPerShot.step * m.ballsPerShot,
       currencyMult: c.meta.blockCurrency.base + c.meta.blockCurrency.step * m.blockCurrency,
@@ -54,25 +55,38 @@ BB.Upgrades = (function () {
      In-game upgrades (bought mid-run)
      ========================================================= */
   const IN_GAME = [
-    { id: "chain",   name: "Chain chance",  metaTrack: "chainEff",
+    { id: "chain",   name: "Chain blocks",  metaTrack: "chainEff",
       value: (e) => pct(e.chainPct),
-      desc: "Chance per ball hit to trigger a chain reaction" },
+      desc: "Chance a standard block spawns as a chain block (fires the chain pattern every time it's hit)" },
     { id: "pierce",  name: "Pierce chance", metaTrack: "pierceEff",
       value: (e) => pct(e.piercePct),
-      desc: "Chance a ball is a piercing beam (passes through blocks)" },
+      desc: "Chance per shot to fire a piercing beam through every block in its path" },
     { id: "shotgun", name: "Shotgun chance", metaTrack: "shotgunEff",
       value: (e) => pct(e.shotgunPct),
       desc: "Chance a ball fires as a spread of balls" },
     { id: "heavy",   name: "Heavy chance",  metaTrack: "heavyEff",
       value: (e) => pct(e.heavyPct),
-      desc: "Chance a ball is heavy: big damage, consumed on first hit. Bosses resist everything else." },
+      desc: "Chance a ball is heavy: big damage, consumed on first hit. Armored blocks resist everything else." },
     { id: "angle",   name: "Aim arc",       metaTrack: null,
       value: (e) => e.angle + "°",
       desc: "Width of the aiming arc" },
     { id: "bounces", name: "Bounces",       metaTrack: null,
       value: (e) => e.bounces,
-      desc: "Bounce budget per ball before it drops" },
+      desc: "Bounce budget per ball before it disappears" },
+    { id: "guide",   name: "Aim guide",     metaTrack: null,
+      value: (e) => Math.round(e.guideLen) + "px",
+      desc: "Longer aim line that previews how balls will actually bounce" },
   ];
+
+  // Progressive reveal: some upgrades stay hidden for the first run(s).
+  // Round N = the Nth run of the save (totalRuns deaths so far + 1).
+  function currentRound() { return meta().totalRuns + 1; }
+  function upgradeHidden(id) {
+    const v = cfg().visibility;
+    if ((id === "heavy" || id === "heavyEff") && currentRound() < v.heavyRound) return true;
+    if ((id === "pierce" || id === "pierceEff") && currentRound() < v.pierceRound) return true;
+    return false;
+  }
 
   U.inGameCost = function (id) {
     const u = cfg().inGame[id];
@@ -106,7 +120,7 @@ BB.Upgrades = (function () {
       desc: "Multiplier on in-game currency from destroyed blocks" },
     { id: "chainEff",   name: "Chain pattern",
       value: (e) => e.chainTier > 0 ? cfg().chain.patterns[e.chainTier - 1].name : "locked",
-      desc: "Unlocks Chain in-run; each level grows the reaction pattern",
+      desc: "Unlocks chain blocks in-run; each level grows the reaction pattern",
       max: () => cfg().chain.patterns.length },
     { id: "pierceEff",  name: "Pierce beam",
       value: (e) => meta().levels.pierceEff > 0
@@ -120,7 +134,7 @@ BB.Upgrades = (function () {
       desc: "Bounces granted per in-run Bounces purchase" },
     { id: "heavyEff",   name: "Heavy damage",
       value: (e) => meta().levels.heavyEff > 0 ? e.heavyDamage + " dmg" : "locked",
-      desc: "Unlocks Heavy in-run; each level adds damage. The boss answer." },
+      desc: "Unlocks Heavy in-run; each level adds damage. The armored-block answer." },
   ];
 
   U.metaCost = function (id) {
@@ -147,6 +161,7 @@ BB.Upgrades = (function () {
     const e = U.effective();
     el.innerHTML = "<h3>In-run upgrades</h3>";
     for (const d of IN_GAME) {
+      if (upgradeHidden(d.id)) continue;
       const locked = d.metaTrack && meta().levels[d.metaTrack] === 0;
       const maxed = !locked && inGameMaxed(d.id, e);
       const cost = U.inGameCost(d.id);
@@ -175,6 +190,7 @@ BB.Upgrades = (function () {
     const e = U.effective();
     el.innerHTML = "<h3>Meta upgrades</h3>";
     for (const d of META) {
+      if (upgradeHidden(d.id)) continue;
       const lv = meta().levels[d.id];
       const maxed = d.max && lv >= d.max();
       const cost = U.metaCost(d.id);

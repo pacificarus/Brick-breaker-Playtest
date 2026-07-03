@@ -12,6 +12,7 @@ BB.UI = {
     document.getElementById("hud-currency").textContent = Math.floor(r.currency);
     document.getElementById("hud-meta").textContent = Math.floor(m.currency);
     document.getElementById("hud-shots").textContent = r.shots;
+    document.getElementById("hud-level").textContent = BB.Game ? BB.Game.levelNumber() : 1;
     document.getElementById("hud-best").textContent = m.bestShots;
   },
   // Re-render everything that displays state (called after any purchase

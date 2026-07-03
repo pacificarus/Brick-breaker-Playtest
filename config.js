@@ -27,32 +27,70 @@ window.BB_DEFAULTS = {
 
   /* ---------- Ball physics / feel ---------- */
   balls: {
-    speed: 540,         // px per second
+    speed: 540,         // px per second at level 1 (levels multiply this)
     radius: 6,          // px
     fireIntervalMs: 70, // delay between balls in a multi-ball shot
     timeScale: 1,       // global speed multiplier (playtest lever; HUD has x1/x2/x3)
   },
 
-  /* ---------- Block spawning & health scaling ---------- */
+  /* ---------- Block spawning ---------- */
   spawn: {
-    minPerRow: 1,       // random 1–4 new blocks per shot (spec)
+    minPerRow: 1,       // random 1–4 new spawns per shot (a wide/mini counts as 1)
     maxPerRow: 4,
-    // "predetermined health level amount" for a new block after S shots:
-    //   health = round(healthBase + healthLinear*S + healthQuad*S^2), min 1
-    healthBase: 1,
-    healthLinear: 0.5,
-    healthQuad: 0.012,
-    doubleBlockChance: 0.12, // chance a spawned block gets 2x the health level
   },
 
-  /* ---------- Bosses ---------- */
-  boss: {
-    chance: 0.07,            // chance per spawn wave that one block is a boss
-    minShotsBeforeBoss: 6,   // no bosses earlier than this many shots
-    widthCells: 2,           // bosses occupy multiple cells (width, 1 row tall)
-    healthMult: 6,           // boss hp = health level * this
-    nonHeavyDamageMult: 0.25,// non-heavy damage is multiplied by this vs bosses
-    heavyDamageMult: 1.5,    // heavy damage is multiplied by this vs bosses
+  /* ---------- Levels ----------
+     A run climbs through these in order, shotsPerLevel shots each.
+     Block health interpolates healthMin -> healthMax across the level
+     (and keeps climbing at the same rate past the last level's end).
+     speedMult scales ball launch speed. weights picks which block types
+     spawn at that level (relative odds; see Block types below).
+     Type names: standard, double, armored, wide, black, mini,
+                 armoredMini, blackMini, armoredWide.                  */
+  levels: {
+    shotsPerLevel: 25,
+    defs: [
+      { healthMin: 1,   healthMax: 40,  speedMult: 1.0,
+        weights: { standard: 3, double: 1, mini: 1 } },
+      { healthMin: 40,  healthMax: 80,  speedMult: 1.08,
+        weights: { standard: 3, double: 1, armored: 1 } },
+      { healthMin: 80,  healthMax: 120, speedMult: 1.16,
+        weights: { standard: 3, black: 1, wide: 1 } },
+      { healthMin: 120, healthMax: 160, speedMult: 1.24,
+        weights: { standard: 2, armoredMini: 1 } },
+      { healthMin: 160, healthMax: 200, speedMult: 1.32,
+        weights: { blackMini: 1, armoredWide: 1 } },
+    ],
+  },
+
+  /* ---------- Block types ----------
+     standard  — 1 cell, level health. May spawn as a CHAIN variant
+                 (see chain below; odds come from the in-run chain upgrade).
+     double    — 1 cell, level health x doubleHealthMult.
+     armored   — 1 cell, level health, gold-plated visual; resists all
+                 non-heavy damage (see armor below).
+     wide      — wideCells wide, level health.
+     black     — 1 cell; EATS any ball that damages it.
+     mini      — four quarter-size blocks in one cell, each with
+                 level health x miniHealthMult.
+     armoredMini / blackMini / armoredWide — combo variants.          */
+  blockTypes: {
+    doubleHealthMult: 2,
+    miniHealthMult: 0.5,  // each of the four minis gets this share of level health
+    wideCells: 3,
+  },
+
+  /* ---------- Armor (armored blocks; the Heavy-ball counterplay) ---------- */
+  armor: {
+    nonHeavyDamageMult: 0.25, // non-heavy damage multiplied by this vs armored
+    heavyDamageMult: 1.5,     // heavy damage multiplied by this vs armored
+  },
+
+  /* ---------- Upgrade visibility (progressive reveal) ----------
+     Round N = the Nth run (round 1 is the first run of a fresh save). */
+  visibility: {
+    heavyRound: 2,   // Heavy (in-game % and meta track) hidden until this round
+    pierceRound: 3,  // Pierce (in-game % and meta track) hidden until this round
   },
 
   /* ---------- Economy ---------- */
@@ -70,14 +108,16 @@ window.BB_DEFAULTS = {
      Cost of the next level = round(baseCost * costGrowth ^ currentLevel).
      Value at level L (for the % ones) = base + step * (L - 1); level 0 = 0%.
      chain/pierce/shotgun/heavy are LOCKED until their meta track below is
-     bought at least once. bounces & angle are available from the start.   */
+     bought at least once. bounces, angle & guide are available from the start. */
   inGame: {
-    chain:   { baseCost: 20, costGrowth: 1.55, base: 0.06, step: 0.06, maxLevel: 12 }, // chance per BALL HIT to trigger a chain
-    pierce:  { baseCost: 25, costGrowth: 1.55, base: 0.05, step: 0.05, maxLevel: 12 }, // chance a ball is a piercing beam
+    chain:   { baseCost: 20, costGrowth: 1.55, base: 0.06, step: 0.06, maxLevel: 12 }, // chance a standard block SPAWNS as a chain block
+    pierce:  { baseCost: 25, costGrowth: 1.55, base: 0.05, step: 0.05, maxLevel: 12,
+               beamDamage: 1 }, // chance PER SHOT to fire a piercing beam; damage per block crossed
     shotgun: { baseCost: 25, costGrowth: 1.55, base: 0.06, step: 0.06, maxLevel: 12 }, // chance a ball fires as a spread
     heavy:   { baseCost: 30, costGrowth: 1.55, base: 0.05, step: 0.05, maxLevel: 12 }, // chance a ball is heavy (big dmg, consumed on hit)
     angle:   { baseCost: 15, costGrowth: 1.7,  base: 60,   step: 15, maxAngle: 170 },  // aim arc in degrees, centered straight up
     bounces: { baseCost: 12, costGrowth: 1.5,  base: 1 },  // base bounce budget; step per purchase comes from meta bounceEff
+    guide:   { baseCost: 10, costGrowth: 1.5,  base: 260, step: 140, maxLevel: 10 },   // aim-guide length in px; guide simulates real bounces
   },
 
   /* ---------- Meta upgrades (bought on the death screen with meta currency) ----
@@ -101,6 +141,8 @@ window.BB_DEFAULTS = {
   },
 
   /* ---------- Chain reaction patterns ----------
+     Chain blocks are decided AT SPAWN (odds = the in-run chain upgrade);
+     every hit a chain block takes fires the pattern below.
      The meta chainEff level picks a tier (level 1 = patterns[0], etc).
      Patterns start partial and grow into rows/columns/combinations (spec).
      cells = offsets [dc, dr] from the hit block; fullRow/fullCol add the

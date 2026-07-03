@@ -68,7 +68,7 @@ BB.State = (function () {
       blocksDestroyed: 0,
       hpDestroyed: 0,
       over: false,
-      levels: { chain: 0, pierce: 0, shotgun: 0, heavy: 0, angle: 0, bounces: 0 },
+      levels: { chain: 0, pierce: 0, shotgun: 0, heavy: 0, angle: 0, bounces: 0, guide: 0 },
     };
   };
 

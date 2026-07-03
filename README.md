@@ -10,9 +10,16 @@ line, the run ends and you spend **meta currency** (🔮) on permanent upgrades,
 then start the next run. During a run, blocks pay out **in-game currency** (💰)
 spent in the right-hand sidebar.
 
+A run climbs through **five levels** (health 1–40, 40–80, … and slightly
+faster balls each level). Each level spawns its own mix of **block types**:
+standard (sometimes a ⚡ **chain** variant, decided at spawn), double-health,
+**armored** (gold border; resists all non-heavy damage), 3-wide, **black**
+(eats any ball that damages it), **mini** (four quarter blocks per cell), and
+combo variants (armored mini, black mini, armored wide) on levels 4–5.
+
 Chain / Pierce / Shotgun / Heavy are locked in-run until their meta track is
-bought once on the death screen. Bosses (wide purple blocks) heavily resist
-everything except Heavy balls.
+bought once on the death screen. Heavy doesn't appear at all until round 2,
+Pierce until round 3.
 
 ## Playtesting menu
 The ⚙ button (top-right) opens a drawer that live-edits every tunable:

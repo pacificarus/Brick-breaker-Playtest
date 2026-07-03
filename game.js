@@ -3,6 +3,10 @@
    row per shot, new blocks spawn at the top, death when a block crosses
    the bottom line. Reads every tunable live from BB.State.cfg so
    playtesting-menu edits apply instantly. No tuning numbers live here.
+
+   Block types (spawned per the current level's weight table in config):
+   standard (may be a chain variant), double, armored, wide, black,
+   mini (4 quarter blocks per cell), and the combo variants.
    ===================================================================== */
 
 window.BB = window.BB || {};
@@ -13,7 +17,7 @@ BB.Game = (function () {
   const run = () => BB.State.run;
 
   let canvas, ctx;
-  let blocks = [], balls = [], flashes = [];
+  let blocks = [], balls = [], flashes = [], beams = [];
   let blockId = 1;
   let phase = "aim";            // aim | firing | over
   let aimAngle = Math.PI / 2;   // radians, from +x axis
@@ -34,10 +38,29 @@ BB.Game = (function () {
     };
   }
 
+  /* ---------- level helpers ---------- */
+  function levelIndex() {
+    const L = cfg().levels;
+    return Math.min(Math.floor(run().shots / L.shotsPerLevel), L.defs.length - 1);
+  }
+  function levelDef() { return cfg().levels.defs[levelIndex()]; }
+  G.levelNumber = () => levelIndex() + 1;
+
+  // Block health at the current shot count: interpolates healthMin ->
+  // healthMax across the level; past the last level's end it keeps
+  // climbing at the same rate (frac not clamped on the final level).
+  function healthLevel() {
+    const L = cfg().levels;
+    const idx = levelIndex();
+    const def = L.defs[idx];
+    const frac = (run().shots - idx * L.shotsPerLevel) / L.shotsPerLevel;
+    return Math.max(1, Math.round(def.healthMin + (def.healthMax - def.healthMin) * frac));
+  }
+
   /* ================= run lifecycle ================= */
   G.newRun = function () {
     BB.State.newRun();
-    blocks = []; balls = []; flashes = [];
+    blocks = []; balls = []; flashes = []; beams = [];
     phase = "aim";
     fireQueue = 0;
     launchX = dims().W / 2;
@@ -49,41 +72,85 @@ BB.Game = (function () {
     BB.UI.refresh();
   };
 
-  function healthLevel() {
-    const c = cfg().spawn, s = run().shots;
-    return Math.max(1, Math.round(c.healthBase + c.healthLinear * s + c.healthQuad * s * s));
+  /* ================= spawning ================= */
+  function pickType(weights) {
+    let total = 0;
+    for (const k of Object.keys(weights)) total += weights[k];
+    let r = Math.random() * total;
+    for (const k of Object.keys(weights)) {
+      r -= weights[k];
+      if (r <= 0) return k;
+    }
+    return "standard";
+  }
+
+  function makeBlock(props) {
+    blocks.push(Object.assign({
+      id: blockId++, row: 0, w: 1,
+      armored: false, black: false, chain: false, mini: false, q: 0,
+    }, props));
+  }
+
+  // Places one spawn of the given type. Returns false if it didn't fit
+  // (caller falls back to standard).
+  function placeType(type, free, hp, eff) {
+    const bt = cfg().blockTypes;
+    const takeCol = () => free.splice(Math.floor(Math.random() * free.length), 1)[0];
+
+    if (type === "wide" || type === "armoredWide") {
+      const w = Math.max(2, Math.min(bt.wideCells, cfg().board.cols));
+      const starts = free.filter((c) => {
+        for (let i = 1; i < w; i++) if (!free.includes(c + i)) return false;
+        return true;
+      });
+      if (starts.length === 0) return false;
+      const col = starts[Math.floor(Math.random() * starts.length)];
+      for (let i = 0; i < w; i++) free.splice(free.indexOf(col + i), 1);
+      makeBlock({ col, w, hp, maxHp: hp, armored: type === "armoredWide" });
+      return true;
+    }
+
+    if (type === "mini" || type === "armoredMini" || type === "blackMini") {
+      if (free.length === 0) return false;
+      const col = takeCol();
+      const mhp = Math.max(1, Math.round(hp * bt.miniHealthMult));
+      for (let q = 0; q < 4; q++) {
+        makeBlock({
+          col, q, mini: true, hp: mhp, maxHp: mhp,
+          armored: type === "armoredMini", black: type === "blackMini",
+        });
+      }
+      return true;
+    }
+
+    if (free.length === 0) return false;
+    const col = takeCol();
+    if (type === "double") {
+      const dhp = Math.round(hp * bt.doubleHealthMult);
+      makeBlock({ col, hp: dhp, maxHp: dhp });
+    } else if (type === "armored") {
+      makeBlock({ col, hp, maxHp: hp, armored: true });
+    } else if (type === "black") {
+      makeBlock({ col, hp, maxHp: hp, black: true });
+    } else { // standard — may roll the chain variant (decided AT SPAWN)
+      makeBlock({ col, hp, maxHp: hp, chain: Math.random() < eff.chainPct });
+    }
+    return true;
   }
 
   function spawnWave() {
     const c = cfg(), d = dims();
+    const eff = BB.Upgrades.effective();
+    const def = levelDef();
     const count = c.spawn.minPerRow +
       Math.floor(Math.random() * (c.spawn.maxPerRow - c.spawn.minPerRow + 1));
     const hp = healthLevel();
     const free = [];
     for (let i = 0; i < d.cols; i++) free.push(i);
-    const used = [];
 
-    // maybe a boss (occupies widthCells columns in one row)
-    let bossPlaced = false;
-    if (run().shots >= c.boss.minShotsBeforeBoss && Math.random() < c.boss.chance) {
-      const w = Math.min(c.boss.widthCells, d.cols);
-      const col = Math.floor(Math.random() * (d.cols - w + 1));
-      for (let i = 0; i < w; i++) {
-        const idx = free.indexOf(col + i);
-        if (idx >= 0) free.splice(idx, 1);
-      }
-      const bhp = Math.round(hp * c.boss.healthMult);
-      blocks.push({ id: blockId++, col, row: 0, w, hp: bhp, maxHp: bhp, boss: true });
-      bossPlaced = true;
-    }
-
-    const normals = Math.max(0, count - (bossPlaced ? 1 : 0));
-    for (let i = 0; i < normals && free.length > 0; i++) {
-      const idx = Math.floor(Math.random() * free.length);
-      const col = free.splice(idx, 1)[0];
-      const double = Math.random() < c.spawn.doubleBlockChance;
-      const h = double ? hp * 2 : hp;
-      blocks.push({ id: blockId++, col, row: 0, w: 1, hp: h, maxHp: h, boss: false });
+    for (let n = 0; n < count && free.length > 0; n++) {
+      const type = pickType(def.weights);
+      if (!placeType(type, free, hp, eff)) placeType("standard", free, hp, eff);
     }
   }
 
@@ -104,19 +171,62 @@ BB.Game = (function () {
     nextLaunchX = null;
     phase = "firing";
     run().shots += 1;
+    // pierce rolls ONCE PER SHOT: an instant beam alongside the balls
+    if (Math.random() < shotEff.piercePct) fireBeam(shotEff);
   }
 
-  function launchBall(angle, type, eff) {
+  // Piercing beam: instant ray from the launch point along the aim angle,
+  // reflecting off side/top walls pierceReflects times, damaging every
+  // block it crosses (beam width scales with the pierce meta track).
+  function fireBeam(eff) {
     const d = dims();
-    const speed = cfg().balls.speed;
-    const r = cfg().balls.radius * (type === "pierce" ? eff.pierceWidth : 1);
+    const halfW = cfg().balls.radius * eff.pierceWidth;
+    let x = launchX, y = d.launchY;
+    let dx = Math.cos(aimAngle), dy = -Math.sin(aimAngle);
+    const segs = [];
+    for (let s = 0; s <= eff.pierceReflects && s < 12; s++) {
+      let tMin = Infinity, wall = null;
+      if (dx > 1e-6)  { const t = (d.W - x) / dx;      if (t < tMin) { tMin = t; wall = "r"; } }
+      if (dx < -1e-6) { const t = -x / dx;             if (t < tMin) { tMin = t; wall = "l"; } }
+      if (dy < -1e-6) { const t = -y / dy;             if (t < tMin) { tMin = t; wall = "t"; } }
+      if (dy > 1e-6)  { const t = (d.launchY - y) / dy; if (t < tMin) { tMin = t; wall = "b"; } }
+      if (!isFinite(tMin)) break;
+      const nx = x + dx * tMin, ny = y + dy * tMin;
+      segs.push([x, y, nx, ny]);
+      if (wall === "b") break;
+      x = nx; y = ny;
+      if (wall === "l" || wall === "r") dx = -dx; else dy = -dy;
+    }
+
+    const dmg = cfg().inGame.pierce.beamDamage;
+    const hit = new Set();
+    for (const [x1, y1, x2, y2] of segs) {
+      const steps = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 6));
+      for (let i = 0; i <= steps; i++) {
+        const px = x1 + ((x2 - x1) * i) / steps;
+        const py = y1 + ((y2 - y1) * i) / steps;
+        for (const b of blocks.slice()) {
+          if (hit.has(b.id)) continue;
+          const r = blockRect(b, d);
+          if (px >= r.x - halfW && px <= r.x + r.w + halfW &&
+              py >= r.y - halfW && py <= r.y + r.h + halfW) {
+            hit.add(b.id);
+            dealDamage(b, dmg, false, { allowChain: true, hitX: px });
+          }
+        }
+      }
+    }
+    beams.push({ segs, w: Math.max(2, halfW * 2), t: 0.4 });
+  }
+
+  function launchBall(angle, type) {
+    const d = dims();
+    const speed = cfg().balls.speed * levelDef().speedMult;
     balls.push({
       x: launchX, y: d.launchY,
       vx: Math.cos(angle) * speed, vy: -Math.sin(angle) * speed,
-      r, type,
-      bounces: 0, reflects: 0,
-      falling: false, done: false,
-      hitSet: type === "pierce" ? {} : null,
+      r: cfg().balls.radius, type,
+      bounces: 0, done: false,
     });
   }
 
@@ -124,19 +234,18 @@ BB.Game = (function () {
     const eff = shotEff;
     let type = "normal";
     const roll = Math.random();
-    if (roll < eff.piercePct) type = "pierce";
-    else if (roll < eff.piercePct + eff.heavyPct) type = "heavy";
-    else if (roll < eff.piercePct + eff.heavyPct + eff.shotgunPct) type = "shotgun";
+    if (roll < eff.heavyPct) type = "heavy";
+    else if (roll < eff.heavyPct + eff.shotgunPct) type = "shotgun";
 
     if (type === "shotgun") {
       const n = Math.max(2, eff.shotgunBalls);
       const spread = (eff.shotgunSpread * Math.PI) / 180;
       for (let i = 0; i < n; i++) {
         const a = aimAngle - spread / 2 + (spread * i) / (n - 1);
-        launchBall(a, "shotgun", eff);
+        launchBall(a, "shotgun");
       }
     } else {
-      launchBall(aimAngle, type, eff);
+      launchBall(aimAngle, type);
     }
   }
 
@@ -154,36 +263,44 @@ BB.Game = (function () {
     run().hpDestroyed += b.maxHp;
   }
 
-  function dealDamage(b, dmg, isHeavy) {
-    const c = cfg().boss;
-    if (b.boss) dmg *= isHeavy ? c.heavyDamageMult : c.nonHeavyDamageMult;
+  // Central damage entry point.
+  // opts.ball      — the ball that dealt it (black blocks eat that ball)
+  // opts.allowChain — a chain-variant block fires its pattern on this hit
+  //                   (pattern damage itself passes allowChain: false)
+  // opts.hitX      — impact x, anchors the chain pattern column
+  function dealDamage(b, dmg, isHeavy, opts) {
+    opts = opts || {};
+    const a = cfg().armor;
+    if (b.armored) dmg *= isHeavy ? a.heavyDamageMult : a.nonHeavyDamageMult;
     b.hp -= dmg;
+    if (b.black && opts.ball) opts.ball.done = true; // eaten
+    const col = b.col, row = b.row, isChain = b.chain;
     if (b.hp <= 0.0001) destroyBlock(b);
+    if (isChain && opts.allowChain) {
+      triggerChain(col, row, b.w, opts.hitX !== undefined ? opts.hitX : (col + 0.5) * dims().cellW);
+    }
   }
 
-  function maybeChain(hitBlock, ballX) {
+  function triggerChain(col, row, w, hitX) {
     const eff = shotEff || BB.Upgrades.effective();
-    if (eff.chainTier <= 0 || Math.random() >= eff.chainPct) return;
+    if (eff.chainTier <= 0) return;
     const d = dims();
     const pattern = cfg().chain.patterns[eff.chainTier - 1];
     if (!pattern) return;
-    // anchor cell: block's row + the column of the block cell nearest the impact
-    const col = Math.max(hitBlock.col,
-      Math.min(hitBlock.col + hitBlock.w - 1, Math.floor(ballX / d.cellW)));
-    const row = hitBlock.row;
+    const anchor = Math.max(col, Math.min(col + w - 1, Math.floor(hitX / d.cellW)));
 
     const cells = [];
     if (pattern.fullRow) for (let i = 0; i < d.cols; i++) cells.push([i, row]);
-    if (pattern.fullCol) for (let j = 0; j < cfg().board.rows; j++) cells.push([col, j]);
-    if (pattern.cells) for (const [dc, dr] of pattern.cells) cells.push([col + dc, row + dr]);
+    if (pattern.fullCol) for (let j = 0; j < cfg().board.rows; j++) cells.push([anchor, j]);
+    if (pattern.cells) for (const [dc, dr] of pattern.cells) cells.push([anchor + dc, row + dr]);
 
     const dmg = cfg().chain.damage;
     const hit = new Set();
     for (const [cc, rr] of cells) {
       for (const b of blocks.slice()) {
-        if (b !== hitBlock && !hit.has(b.id) && blockCoversCell(b, cc, rr)) {
+        if (!hit.has(b.id) && blockCoversCell(b, cc, rr)) {
           hit.add(b.id);
-          dealDamage(b, dmg, false);
+          dealDamage(b, dmg, false, {}); // no chain recursion
         }
       }
     }
@@ -192,7 +309,20 @@ BB.Game = (function () {
 
   /* ================= physics ================= */
   function blockRect(b, d) {
+    if (b.mini) {
+      const hw = d.cellW / 2, hh = d.cellH / 2;
+      return {
+        x: b.col * d.cellW + (b.q % 2) * hw,
+        y: b.row * d.cellH + Math.floor(b.q / 2) * hh,
+        w: hw, h: hh,
+      };
+    }
     return { x: b.col * d.cellW, y: b.row * d.cellH, w: b.w * d.cellW, h: d.cellH };
+  }
+
+  function outOfBounces(ball) {
+    // ball simply disappears, so the shot phase ends sooner
+    if (ball.bounces > (shotEff || BB.Upgrades.effective()).bounces) ball.done = true;
   }
 
   function stepBall(ball, dt, d) {
@@ -202,12 +332,11 @@ BB.Game = (function () {
     // bottom: ball returns
     if (ball.y > d.launchY) {
       ball.done = true;
-      if (!ball.falling && nextLaunchX === null) {
+      if (nextLaunchX === null) {
         nextLaunchX = Math.max(ball.r, Math.min(d.W - ball.r, ball.x));
       }
       return;
     }
-    if (ball.falling) return; // out of bounces: drops through everything
 
     // walls
     let wallHit = false;
@@ -215,13 +344,9 @@ BB.Game = (function () {
     else if (ball.x > d.W - ball.r) { ball.x = d.W - ball.r; ball.vx = -Math.abs(ball.vx); wallHit = true; }
     if (ball.y < ball.r)          { ball.y = ball.r; ball.vy = Math.abs(ball.vy); wallHit = true; }
     if (wallHit) {
-      if (ball.type === "pierce") {
-        ball.reflects += 1;
-        if (ball.reflects > (shotEff || BB.Upgrades.effective()).pierceReflects) startFalling(ball);
-      } else {
-        ball.bounces += 1;
-        if (ball.bounces > (shotEff || BB.Upgrades.effective()).bounces) startFalling(ball);
-      }
+      ball.bounces += 1;
+      outOfBounces(ball);
+      if (ball.done) return;
     }
 
     // blocks
@@ -232,20 +357,16 @@ BB.Game = (function () {
       const dx = ball.x - cx, dy = ball.y - cy;
       if (dx * dx + dy * dy > ball.r * ball.r) continue;
 
-      if (ball.type === "pierce") {
-        if (!ball.hitSet[b.id]) {
-          ball.hitSet[b.id] = true;
-          dealDamage(b, 1, false);
-          maybeChain(b, ball.x);
-        }
-        continue; // pass through
-      }
-
       if (ball.type === "heavy") {
         const eff = shotEff || BB.Upgrades.effective();
-        dealDamage(b, eff.heavyDamage || 1, true);
-        maybeChain(b, ball.x);
+        dealDamage(b, eff.heavyDamage || 1, true, { ball, allowChain: true, hitX: ball.x });
         ball.done = true; // consumed on first hit
+        return;
+      }
+
+      if (b.black) { // eats the ball; no reflection
+        dealDamage(b, 1, false, { ball, allowChain: true, hitX: ball.x });
+        ball.done = true;
         return;
       }
 
@@ -259,17 +380,11 @@ BB.Game = (function () {
         ball.vy = ball.y < r.y + r.h / 2 ? -Math.abs(ball.vy) : Math.abs(ball.vy);
         ball.y += ball.vy > 0 ? overlapY : -overlapY;
       }
-      dealDamage(b, 1, false);
-      maybeChain(b, ball.x);
+      dealDamage(b, 1, false, { ball, allowChain: true, hitX: ball.x });
       ball.bounces += 1;
-      if (ball.bounces > (shotEff || BB.Upgrades.effective()).bounces) startFalling(ball);
+      outOfBounces(ball);
       break; // one block collision per substep
     }
-  }
-
-  function startFalling(ball) {
-    ball.falling = true;
-    ball.vy = Math.abs(ball.vy) || cfg().balls.speed;
   }
 
   function endTurn() {
@@ -288,6 +403,11 @@ BB.Game = (function () {
 
   /* ================= main loop ================= */
   function update(dt) {
+    for (const f of flashes) f.t -= dt;
+    flashes = flashes.filter((f) => f.t > 0);
+    for (const bm of beams) bm.t -= dt;
+    beams = beams.filter((bm) => bm.t > 0);
+
     if (phase !== "firing") return;
     const c = cfg();
 
@@ -310,21 +430,101 @@ BB.Game = (function () {
     }
     balls = balls.filter((b) => !b.done);
 
-    for (const f of flashes) f.t -= dt;
-    flashes = flashes.filter((f) => f.t > 0);
-
     if (fireQueue === 0 && balls.length === 0) endTurn();
+  }
+
+  /* ================= aim guide (simulated bounces) ================= */
+  // Ray vs rect inflated by the ball radius; returns nearest entry {t, axis}.
+  function raySlab(x, y, dx, dy, rect, r) {
+    const rx = rect.x - r, ry = rect.y - r, rw = rect.w + 2 * r, rh = rect.h + 2 * r;
+    let tmin = -Infinity, tmax = Infinity, axis = null;
+    if (Math.abs(dx) < 1e-9) {
+      if (x < rx || x > rx + rw) return null;
+    } else {
+      let t1 = (rx - x) / dx, t2 = (rx + rw - x) / dx;
+      if (t1 > t2) { const tt = t1; t1 = t2; t2 = tt; }
+      if (t1 > tmin) { tmin = t1; axis = "x"; }
+      tmax = Math.min(tmax, t2);
+    }
+    if (Math.abs(dy) < 1e-9) {
+      if (y < ry || y > ry + rh) return null;
+    } else {
+      let t1 = (ry - y) / dy, t2 = (ry + rh - y) / dy;
+      if (t1 > t2) { const tt = t1; t1 = t2; t2 = tt; }
+      if (t1 > tmin) { tmin = t1; axis = "y"; }
+      tmax = Math.min(tmax, t2);
+    }
+    if (tmin > tmax || tmin <= 1e-6) return null;
+    return { t: tmin, axis };
+  }
+
+  function drawGuide(d) {
+    const eff = BB.Upgrades.effective();
+    let budget = eff.guideLen;
+    const r = cfg().balls.radius;
+    let x = launchX, y = d.launchY;
+    let dx = Math.cos(aimAngle), dy = -Math.sin(aimAngle);
+
+    ctx.strokeStyle = "#ffffff88";
+    ctx.setLineDash([3, 9]);
+    ctx.beginPath();
+    for (let seg = 0; seg < 14 && budget > 1; seg++) {
+      // nearest hit: walls, then blocks
+      let tMin = budget, axis = null, isBottom = false;
+      if (dx < -1e-9) { const t = (r - x) / dx;        if (t > 1e-6 && t < tMin) { tMin = t; axis = "x"; } }
+      if (dx > 1e-9)  { const t = (d.W - r - x) / dx;  if (t > 1e-6 && t < tMin) { tMin = t; axis = "x"; } }
+      if (dy < -1e-9) { const t = (r - y) / dy;        if (t > 1e-6 && t < tMin) { tMin = t; axis = "y"; } }
+      if (dy > 1e-9)  { const t = (d.launchY - y) / dy; if (t > 1e-6 && t < tMin) { tMin = t; axis = "y"; isBottom = true; } }
+      for (const b of blocks) {
+        const hit = raySlab(x, y, dx, dy, blockRect(b, d), r);
+        if (hit && hit.t < tMin) { tMin = hit.t; axis = hit.axis; isBottom = false; }
+      }
+      const nx = x + dx * tMin, ny = y + dy * tMin;
+      ctx.moveTo(x, y);
+      ctx.lineTo(nx, ny);
+      budget -= tMin;
+      if (isBottom) break;
+      x = nx; y = ny;
+      if (axis === "x") dx = -dx; else if (axis === "y") dy = -dy; else break;
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   /* ================= drawing ================= */
   function hpColor(b) {
-    if (b.boss) return "#b13be0";
-    const ratio = Math.min(1, b.maxHp / Math.max(1, healthLevel() * 2));
-    const hue = 200 - ratio * 160; // blue -> red as blocks get tougher
+    // ratio is relative to the CURRENT LEVEL's max health, so color only
+    // shifts when a block's own hp changes and reads consistently per level
+    const ratio = Math.min(1, b.hp / Math.max(1, levelDef().healthMax));
+    const hue = 200 - ratio * 160; // blue -> red with remaining health
     return `hsl(${hue},70%,50%)`;
   }
 
-  const BALL_COLORS = { normal: "#f5f5f5", pierce: "#4dd2ff", heavy: "#ffb020", shotgun: "#8dff6a" };
+  const BALL_COLORS = { normal: "#f5f5f5", heavy: "#ffb020", shotgun: "#8dff6a" };
+
+  function drawBlock(b, d) {
+    const r = blockRect(b, d);
+    const pad = b.mini ? 1 : 2;
+    ctx.fillStyle = b.black ? "#08080c" : hpColor(b);
+    ctx.fillRect(r.x + pad, r.y + pad, r.w - 2 * pad, r.h - 2 * pad);
+    if (b.black) {
+      ctx.strokeStyle = "#66607a";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(r.x + pad, r.y + pad, r.w - 2 * pad, r.h - 2 * pad);
+    }
+    if (b.armored) { // the gold-plated "boss" visual
+      ctx.strokeStyle = "#ffd700";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x + pad, r.y + pad, r.w - 2 * pad, r.h - 2 * pad);
+    }
+    ctx.fillStyle = "#fff";
+    ctx.font = (b.mini ? "bold 10px" : "bold 15px") + " system-ui, sans-serif";
+    ctx.fillText(Math.ceil(b.hp), r.x + r.w / 2, r.y + r.h / 2);
+    if (b.chain) {
+      ctx.font = (b.mini ? "8px" : "11px") + " system-ui, sans-serif";
+      ctx.fillText("⚡", r.x + r.w - 8, r.y + 8);
+    }
+  }
 
   function draw() {
     const d = dims();
@@ -343,6 +543,20 @@ BB.Game = (function () {
     ctx.stroke();
     ctx.setLineDash([]);
 
+    // pierce beams (fading)
+    for (const bm of beams) {
+      ctx.strokeStyle = `rgba(77,210,255,${(bm.t / 0.4) * 0.8})`;
+      ctx.lineWidth = bm.w;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      for (const [x1, y1, x2, y2] of bm.segs) {
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+      }
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+
     // chain flashes
     for (const f of flashes) {
       ctx.fillStyle = `rgba(255,220,80,${f.t / 0.35 * 0.35})`;
@@ -354,31 +568,10 @@ BB.Game = (function () {
     // blocks
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    for (const b of blocks) {
-      const r = blockRect(b, d);
-      ctx.fillStyle = hpColor(b);
-      ctx.fillRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4);
-      if (b.boss) {
-        ctx.strokeStyle = "#ffd700";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4);
-      }
-      ctx.fillStyle = "#fff";
-      ctx.font = (b.boss ? "bold 18px" : "bold 15px") + " system-ui, sans-serif";
-      ctx.fillText(Math.ceil(b.hp), r.x + r.w / 2, r.y + r.h / 2);
-    }
+    for (const b of blocks) drawBlock(b, d);
 
-    // aim guide
-    if (phase === "aim") {
-      const gx = Math.cos(aimAngle), gy = -Math.sin(aimAngle);
-      ctx.strokeStyle = "#ffffff88";
-      ctx.setLineDash([3, 9]);
-      ctx.beginPath();
-      ctx.moveTo(launchX, d.launchY);
-      ctx.lineTo(launchX + gx * 340, d.launchY + gy * 340);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
+    // aim guide (simulates real bounces; length is an in-run upgrade)
+    if (phase === "aim") drawGuide(d);
 
     // launch point + queued-ball count
     ctx.fillStyle = "#f5f5f5";

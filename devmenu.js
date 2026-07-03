@@ -14,8 +14,9 @@ BB.DevMenu = (function () {
   const cfg = () => BB.State.cfg;
 
   const SECTION_LABELS = {
-    board: "Board", balls: "Balls", spawn: "Spawning & health",
-    boss: "Bosses", economy: "Economy",
+    board: "Board", balls: "Balls", spawn: "Spawning",
+    levels: "Levels (health/speed/types)", blockTypes: "Block types",
+    armor: "Armor", visibility: "Upgrade visibility", economy: "Economy",
     inGame: "In-run upgrade tuning", meta: "Meta upgrade tuning",
     chain: "Chain reaction",
   };

@@ -93,10 +93,11 @@ window.BB_DEFAULTS = {
   },
 
   /* ---------- Upgrade visibility (progressive reveal) ----------
-     Round N = the Nth run (round 1 is the first run of a fresh save). */
+     Level N = hidden until meta.unlockedLevel >= N. */
   visibility: {
-    heavyRound: 2,   // Heavy (in-game % and meta track) hidden until this round
-    pierceRound: 3,  // Pierce (in-game % and meta track) hidden until this round
+    heavyLevel: 2,        // Heavy (in-game % and meta track) hidden until this level unlocks
+    pierceLevel: 3,       // Pierce (in-game % and meta track) hidden until this level unlocks
+    startCurrencyLevel: 2, // Starting funds meta upgrade hidden until this level unlocks
   },
 
   /* ---------- Economy ---------- */
@@ -147,6 +148,7 @@ window.BB_DEFAULTS = {
                   stepBase: 3, stepStep: 1 },         // bounces granted per in-game bounce purchase
     heavyEff:   { baseCost: 15, costGrowth: 1.8, startLevel: 0,
                   dmgBase: 3, dmgStep: 2 },           // heavy ball damage
+    startCurrency: { baseCost: 10, costGrowth: 1.6, base: 0, step: 15 }, // +step starting in-game currency per run, per level
   },
 
   /* ---------- Chain reaction patterns ----------

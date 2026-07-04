@@ -48,6 +48,7 @@ BB.Upgrades = (function () {
       shotgunSpread: c.meta.shotgunEff.spreadDeg,
       heavyDamage: m.heavyEff > 0
         ? c.meta.heavyEff.dmgBase + c.meta.heavyEff.dmgStep * (m.heavyEff - 1) : 0,
+      startCurrency: c.meta.startCurrency.base + c.meta.startCurrency.step * (m.startCurrency || 0),
     };
   };
 
@@ -78,13 +79,14 @@ BB.Upgrades = (function () {
       desc: "Longer aim line that previews how balls will actually bounce" },
   ];
 
-  // Progressive reveal: some upgrades stay hidden for the first run(s).
-  // Round N = the Nth run of the save (totalRuns deaths so far + 1).
-  function currentRound() { return meta().totalRuns + 1; }
+  // Progressive reveal: some upgrades stay hidden until the level that
+  // introduces the block type they answer has been unlocked.
   function upgradeHidden(id) {
     const v = cfg().visibility;
-    if ((id === "heavy" || id === "heavyEff") && currentRound() < v.heavyRound) return true;
-    if ((id === "pierce" || id === "pierceEff") && currentRound() < v.pierceRound) return true;
+    const ul = meta().unlockedLevel || 1;
+    if ((id === "heavy" || id === "heavyEff") && ul < v.heavyLevel) return true;
+    if ((id === "pierce" || id === "pierceEff") && ul < v.pierceLevel) return true;
+    if (id === "startCurrency" && ul < v.startCurrencyLevel) return true;
     return false;
   }
 
@@ -135,6 +137,9 @@ BB.Upgrades = (function () {
     { id: "heavyEff",   name: "Heavy damage",
       value: (e) => meta().levels.heavyEff > 0 ? e.heavyDamage + " dmg" : "locked",
       desc: "Unlocks Heavy in-run; each level adds damage. The armored-block answer." },
+    { id: "startCurrency", name: "Starting funds",
+      value: (e) => "+" + e.startCurrency + " 💰",
+      desc: "Start every run with this much in-game currency" },
   ];
 
   U.metaCost = function (id) {

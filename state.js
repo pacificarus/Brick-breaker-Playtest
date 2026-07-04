@@ -55,6 +55,7 @@ BB.State = (function () {
         shotgunEff: S.cfg.meta.shotgunEff.startLevel,
         bounceEff:  S.cfg.meta.bounceEff.startLevel,
         heavyEff:   S.cfg.meta.heavyEff.startLevel,
+        startCurrency: 0,
       },
       bestShots: 0,
       totalRuns: 0,
@@ -64,7 +65,10 @@ BB.State = (function () {
 
   S.newRun = function () {
     S.run = {
-      currency: S.cfg.economy.startingRunCurrency,
+      // state.js loads before upgrades.js, so compute directly from config
+      // rather than calling into BB.Upgrades.
+      currency: S.cfg.economy.startingRunCurrency +
+        S.cfg.meta.startCurrency.step * (S.meta.levels.startCurrency || 0),
       shots: 0,
       blocksDestroyed: 0,
       hpDestroyed: 0,

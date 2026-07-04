@@ -5,7 +5,8 @@ Standalone, framework-free browser prototype of the Ballz-style brick breaker.
 
 ## The loop being tested
 Aim with the mouse, click to fire. Every shot descends all blocks one row and
-spawns 1–4 new numbered blocks at the top. When a block crosses the dashed
+spawns 1–4 new numbered blocks at the top (a 5th becomes possible near the end
+of a level). When a block crosses the dashed
 line, the run ends and you spend **meta currency** (🔮) on permanent upgrades,
 then start the next run. During a run, blocks pay out **in-game currency** (💰)
 spent in the right-hand sidebar.
@@ -15,7 +16,10 @@ faster balls each level). Each level spawns its own mix of **block types**:
 standard (sometimes a ⚡ **chain** variant, decided at spawn), double-health,
 **armored** (gold border; resists all non-heavy damage), 3-wide, **black**
 (eats any ball that damages it), **mini** (four quarter blocks per cell), and
-combo variants (armored mini, black mini, armored wide) on levels 4–5.
+combo variants (armored mini, black mini, armored wide) on levels 4–5. Within
+a level, special blocks fade in from rare to common and a 5th spawn becomes
+possible, so each level opens as a gentle breather and closes with a
+difficulty crest right before the next level resets the tension.
 
 Chain / Pierce / Shotgun / Heavy are locked in-run until their meta track is
 bought once on the death screen. Heavy doesn't appear at all until round 2,

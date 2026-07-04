@@ -51,31 +51,48 @@ window.BB_DEFAULTS = {
      type's weight lerps from weightsStart to weightsEnd as the level
      progresses (frac 0 -> 1). Weights are normalized, so a ramp only
      changes the mix RELATIVE to an anchor whose weight stays put — every
-     level keeps a constant (or fading) `standard` weight as that anchor.
+     level keeps a constant `standard` weight as that anchor (L1-L4).
      A key present in only one map interpolates to/from 0.
+
+     Tuning intent — each level opens as a breather and closes as a
+     squeeze: mostly standard at the start, then specials fade in so the
+     level's end (near-peak block health + a growing 5th-spawn chance,
+     see spawn.extraSpawnChanceEnd) forms a difficulty crest right before
+     the next level resets the tension. Threat ramps steeper than variety:
+     the block that punishes a resource (armored eats damage, black eats
+     balls) starts rarer within its level than the plain variety blocks
+     (double, mini, wide) do. standard is held CONSTANT rather than ramped
+     down within a level for two reasons: it's the anchor the ramp is
+     relative to (see above), and only standard blocks can roll the chain
+     variant at spawn, so ramping it down would silently nerf the chain
+     upgrade late-level.
+
+     L5 is the exception: its end mix has no standards at all, so instead
+     its start-of-level standard weight fades to 0 across the level — that
+     fade IS the anchor, and doubles as an opening breather. Its two combo
+     types ramp at different rates so the mix itself shifts: blackMini
+     (the scarier one — eats balls) ramps harder than armoredWide.
+
      Type names: standard, double, armored, wide, black, mini,
                  armoredMini, blackMini, armoredWide.                  */
   levels: {
     shotsPerLevel: 25,
     defs: [
       { healthMin: 1,   healthMax: 40,  speedMult: 1.0,
-        weightsStart: { standard: 3, double: 0.4, mini: 0.4 },
-        weightsEnd:   { standard: 3, double: 1,   mini: 1 } },
+        weightsStart: { standard: 3, double: 0.4, mini: 0.3 },
+        weightsEnd:   { standard: 3, double: 1.2, mini: 1.2 } },
       { healthMin: 40,  healthMax: 80,  speedMult: 1.08,
-        weightsStart: { standard: 3, double: 0.4, armored: 0.4 },
-        weightsEnd:   { standard: 3, double: 1,   armored: 1 } },
+        weightsStart: { standard: 3, double: 0.5,  armored: 0.25 },
+        weightsEnd:   { standard: 3, double: 1.1,  armored: 1.2 } },
       { healthMin: 80,  healthMax: 120, speedMult: 1.16,
-        weightsStart: { standard: 3, black: 0.4, wide: 0.4 },
-        weightsEnd:   { standard: 3, black: 1,   wide: 1 } },
+        weightsStart: { standard: 3, wide: 0.4, black: 0.2 },
+        weightsEnd:   { standard: 3, wide: 1.2, black: 1.15 } },
       { healthMin: 120, healthMax: 160, speedMult: 1.24,
-        weightsStart: { standard: 2, armoredMini: 0.4 },
-        weightsEnd:   { standard: 2, armoredMini: 1 } },
-      // L5 has no standard blocks in its end mix, so it seeds a standard
-      // weight at the start that fades to 0 — this is the anchor that makes
-      // the ramp meaningful and also gives the level's opening a breather.
+        weightsStart: { standard: 2, armoredMini: 0.35 },
+        weightsEnd:   { standard: 2, armoredMini: 1.3 } },
       { healthMin: 160, healthMax: 200, speedMult: 1.32,
-        weightsStart: { standard: 1.5, blackMini: 0.5, armoredWide: 0.5 },
-        weightsEnd:   { standard: 0,   blackMini: 1.2, armoredWide: 1.1 } },
+        weightsStart: { standard: 1.5, blackMini: 0.4,  armoredWide: 0.5 },
+        weightsEnd:   { standard: 0,   blackMini: 1.25, armoredWide: 1.1 } },
     ],
   },
 

@@ -46,15 +46,40 @@ BB.Game = (function () {
   function levelDef() { return cfg().levels.defs[levelIndex()]; }
   G.levelNumber = () => levelIndex() + 1;
 
+  // Raw (UNCLAMPED) within-level progress: 0 at the level's first shot,
+  // 1 at its last. On the final level it keeps growing past 1 so health
+  // extrapolation continues; the weight/spawn ramps clamp it to [0,1].
+  function levelFrac() {
+    const L = cfg().levels;
+    const idx = levelIndex();
+    return (run().shots - idx * L.shotsPerLevel) / L.shotsPerLevel;
+  }
+
   // Block health at the current shot count: interpolates healthMin ->
   // healthMax across the level; past the last level's end it keeps
   // climbing at the same rate (frac not clamped on the final level).
   function healthLevel() {
-    const L = cfg().levels;
-    const idx = levelIndex();
-    const def = L.defs[idx];
-    const frac = (run().shots - idx * L.shotsPerLevel) / L.shotsPerLevel;
+    const def = levelDef();
+    const frac = levelFrac();
     return Math.max(1, Math.round(def.healthMin + (def.healthMax - def.healthMin) * frac));
+  }
+
+  // Weight table for the current level at progress `frac` (expected already
+  // clamped to [0,1]): lerps each type's weight from weightsStart to
+  // weightsEnd over the union of their keys (a missing key counts as 0).
+  // Keys resolving to <= 0 are dropped so pickType never picks a zero/
+  // negative-weight type. Falls back to a stale save's static `weights`
+  // (used for BOTH ends) when a def predates the start/end split.
+  function rampedWeights(def, frac) {
+    const start = def.weightsStart || def.weights || {};
+    const end = def.weightsEnd || def.weights || {};
+    const out = {};
+    for (const k of new Set([...Object.keys(start), ...Object.keys(end)])) {
+      const s = start[k] || 0, e = end[k] || 0;
+      const w = s + (e - s) * frac;
+      if (w > 0) out[k] = w;
+    }
+    return out;
   }
 
   /* ================= run lifecycle ================= */
@@ -142,14 +167,18 @@ BB.Game = (function () {
     const c = cfg(), d = dims();
     const eff = BB.Upgrades.effective();
     const def = levelDef();
-    const count = c.spawn.minPerRow +
+    const frac = Math.min(1, levelFrac()); // ramps must not extrapolate past 1
+    const weights = rampedWeights(def, frac);
+    // base count 1–4, plus a growing chance of one extra spawn toward level end
+    let count = c.spawn.minPerRow +
       Math.floor(Math.random() * (c.spawn.maxPerRow - c.spawn.minPerRow + 1));
+    if (Math.random() < frac * c.spawn.extraSpawnChanceEnd) count += 1;
     const hp = healthLevel();
     const free = [];
     for (let i = 0; i < d.cols; i++) free.push(i);
 
     for (let n = 0; n < count && free.length > 0; n++) {
-      const type = pickType(def.weights);
+      const type = pickType(weights);
       if (!placeType(type, free, hp, eff)) placeType("standard", free, hp, eff);
     }
   }
@@ -641,6 +670,11 @@ BB.Game = (function () {
   };
 
   G.phase = () => phase;
+
+  // Debug accessors (verification + future dev-menu display): current
+  // clamped level progress and the weight table it produces.
+  G.levelFrac = () => Math.min(1, levelFrac());
+  G.weightsNow = () => rampedWeights(levelDef(), Math.min(1, levelFrac()));
 
   return G;
 })();

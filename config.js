@@ -37,29 +37,45 @@ window.BB_DEFAULTS = {
   spawn: {
     minPerRow: 1,       // random 1–4 new spawns per shot (a wide/mini counts as 1)
     maxPerRow: 4,
+    // Chance, AT LEVEL END, of one bonus spawn beyond maxPerRow (making 1–5).
+    // Scales linearly from 0 at level start: chance = clampedFrac * this.
+    extraSpawnChanceEnd: 0.35,
   },
 
   /* ---------- Levels ----------
      A run climbs through these in order, shotsPerLevel shots each.
      Block health interpolates healthMin -> healthMax across the level
      (and keeps climbing at the same rate past the last level's end).
-     speedMult scales ball launch speed. weights picks which block types
-     spawn at that level (relative odds; see Block types below).
+     speedMult scales ball launch speed. weightsStart / weightsEnd pick
+     which block types spawn (relative odds; see Block types below): each
+     type's weight lerps from weightsStart to weightsEnd as the level
+     progresses (frac 0 -> 1). Weights are normalized, so a ramp only
+     changes the mix RELATIVE to an anchor whose weight stays put — every
+     level keeps a constant (or fading) `standard` weight as that anchor.
+     A key present in only one map interpolates to/from 0.
      Type names: standard, double, armored, wide, black, mini,
                  armoredMini, blackMini, armoredWide.                  */
   levels: {
     shotsPerLevel: 25,
     defs: [
       { healthMin: 1,   healthMax: 40,  speedMult: 1.0,
-        weights: { standard: 3, double: 1, mini: 1 } },
+        weightsStart: { standard: 3, double: 0.4, mini: 0.4 },
+        weightsEnd:   { standard: 3, double: 1,   mini: 1 } },
       { healthMin: 40,  healthMax: 80,  speedMult: 1.08,
-        weights: { standard: 3, double: 1, armored: 1 } },
+        weightsStart: { standard: 3, double: 0.4, armored: 0.4 },
+        weightsEnd:   { standard: 3, double: 1,   armored: 1 } },
       { healthMin: 80,  healthMax: 120, speedMult: 1.16,
-        weights: { standard: 3, black: 1, wide: 1 } },
+        weightsStart: { standard: 3, black: 0.4, wide: 0.4 },
+        weightsEnd:   { standard: 3, black: 1,   wide: 1 } },
       { healthMin: 120, healthMax: 160, speedMult: 1.24,
-        weights: { standard: 2, armoredMini: 1 } },
+        weightsStart: { standard: 2, armoredMini: 0.4 },
+        weightsEnd:   { standard: 2, armoredMini: 1 } },
+      // L5 has no standard blocks in its end mix, so it seeds a standard
+      // weight at the start that fades to 0 — this is the anchor that makes
+      // the ramp meaningful and also gives the level's opening a breather.
       { healthMin: 160, healthMax: 200, speedMult: 1.32,
-        weights: { blackMini: 1, armoredWide: 1 } },
+        weightsStart: { standard: 1.5, blackMini: 0.5, armoredWide: 0.5 },
+        weightsEnd:   { standard: 0,   blackMini: 1.2, armoredWide: 1.1 } },
     ],
   },
 

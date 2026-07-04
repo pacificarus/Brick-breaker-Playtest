@@ -114,6 +114,10 @@ BB.DevMenu = (function () {
     det.appendChild(numberRow("meta currency", BB.State.meta.currency, (v) => {
       BB.State.meta.currency = v; BB.State.saveMeta(); BB.UI.refresh();
     }));
+    det.appendChild(numberRow("unlocked level (run starts here)", BB.State.meta.unlockedLevel || 1, (v) => {
+      BB.State.meta.unlockedLevel = Math.max(1, Math.round(v));
+      BB.State.saveMeta(); BB.UI.refresh();
+    }));
 
     for (const id of Object.keys(BB.State.run.levels)) {
       det.appendChild(numberRow("run level: " + id, BB.State.run.levels[id], (v) => {

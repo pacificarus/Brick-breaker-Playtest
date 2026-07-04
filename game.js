@@ -39,22 +39,33 @@ BB.Game = (function () {
   }
 
   /* ---------- level helpers ---------- */
+  // A run is a single level attempt: the level is fixed for the whole run
+  // (run().level, set from the meta unlockedLevel). No more shot-based climbing.
   function levelIndex() {
     const L = cfg().levels;
-    return Math.min(Math.floor(run().shots / L.shotsPerLevel), L.defs.length - 1);
+    return Math.min(Math.max(0, run().level - 1), L.defs.length - 1);
   }
   function levelDef() { return cfg().levels.defs[levelIndex()]; }
   G.levelNumber = () => levelIndex() + 1;
 
-  // Block health at the current shot count: interpolates healthMin ->
-  // healthMax across the level; past the last level's end it keeps
-  // climbing at the same rate (frac not clamped on the final level).
+  // Within-level progress, clamped to [0,1] (a run can't outlive its level).
+  function levelFrac() {
+    return Math.min(1, run().shots / cfg().levels.shotsPerLevel);
+  }
+
+  // Block health at the current shot count. Start health is softened for
+  // level 2+: a blend of the previous level's healthMin and this level's
+  // healthMin (startHealthBlend). Level 1 starts at its own healthMin.
+  // From there it ramps to this level's healthMax across the level.
+  function lerp(a, b, t) { return a + (b - a) * t; }
   function healthLevel() {
     const L = cfg().levels;
     const idx = levelIndex();
     const def = L.defs[idx];
-    const frac = (run().shots - idx * L.shotsPerLevel) / L.shotsPerLevel;
-    return Math.max(1, Math.round(def.healthMin + (def.healthMax - def.healthMin) * frac));
+    const start = idx === 0
+      ? def.healthMin
+      : lerp(L.defs[idx - 1].healthMin, def.healthMin, L.startHealthBlend);
+    return Math.max(1, Math.round(lerp(start, def.healthMax, levelFrac())));
   }
 
   /* ================= run lifecycle ================= */
@@ -390,6 +401,15 @@ BB.Game = (function () {
   function endTurn() {
     descendBlocks();
     if (checkDeath()) {
+      phase = "over";
+      run().over = true;
+      BB.Main.onDeath();
+      return;
+    }
+    // Level clear: survived the final descend of shotsPerLevel shots. Same
+    // exit as death (the stats object distinguishes win from loss); no spawn.
+    if (run().shots >= cfg().levels.shotsPerLevel) {
+      run().cleared = true;
       phase = "over";
       run().over = true;
       BB.Main.onDeath();

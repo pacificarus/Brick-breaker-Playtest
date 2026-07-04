@@ -38,11 +38,28 @@ BB.Main = (function () {
 
   M.onDeath = function () {
     const stats = BB.State.endRun();
+
+    const title = document.getElementById("death-title");
+    title.classList.toggle("win", stats.cleared);
+    title.textContent = stats.cleared
+      ? `Level ${stats.level} cleared!`
+      : `Run over — Level ${stats.level}`;
+
+    const banner = document.getElementById("death-banner");
+    if (stats.gameBeaten) {
+      banner.textContent = "Game beaten — replaying final level";
+      banner.classList.remove("hidden");
+    } else {
+      banner.classList.add("hidden");
+    }
+
+    const bonusLine = stats.clearBonus > 0
+      ? ` + ${stats.clearBonus} clear bonus` : "";
     document.getElementById("death-stats").innerHTML =
       `<div class="stat"><b>${stats.shots}</b> shots survived (best: ${stats.best})</div>` +
       `<div class="stat"><b>${stats.blocks}</b> blocks destroyed</div>` +
       `<div class="stat earn">+<b>${stats.earned}</b> meta currency ` +
-      `<span class="fine">(${stats.fromBlocks.toFixed(1)} from blocks + ${stats.fromShots.toFixed(1)} from shots)</span></div>`;
+      `<span class="fine">(${stats.fromBlocks.toFixed(1)} from blocks + ${stats.fromShots.toFixed(1)} from shots${bonusLine})</span></div>`;
     show("screen-death");
     BB.Upgrades.renderMetaPanel();
     BB.UI.refresh();

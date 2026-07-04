@@ -40,15 +40,21 @@ window.BB_DEFAULTS = {
   },
 
   /* ---------- Levels ----------
-     A run climbs through these in order, shotsPerLevel shots each.
-     Block health interpolates healthMin -> healthMax across the level
-     (and keeps climbing at the same rate past the last level's end).
+     One run = one level attempt at the player's highest unlocked level.
+     Surviving shotsPerLevel shots clears the level and unlocks the next.
+     Block health interpolates a (softened) start -> healthMax across the
+     shotsPerLevel shots (see startHealthBlend).
      speedMult scales ball launch speed. weights picks which block types
      spawn at that level (relative odds; see Block types below).
      Type names: standard, double, armored, wide, black, mini,
                  armoredMini, blackMini, armoredWide.                  */
   levels: {
     shotsPerLevel: 25,
+    // A fresh run at level N (N>=2) starts block health blended between the
+    // previous level's healthMin and this level's healthMin, then ramps to
+    // this level's healthMax by level end. 0 = start at the previous level's
+    // healthMin (gentlest), 1 = start at this level's own healthMin (hardest).
+    startHealthBlend: 0.5,
     defs: [
       { healthMin: 1,   healthMax: 40,  speedMult: 1.0,
         weights: { standard: 3, double: 1, mini: 1 } },
@@ -102,6 +108,9 @@ window.BB_DEFAULTS = {
     //   floor(blocksDestroyed * metaYieldPerBlock + shotsSurvived * metaYieldPerShot)
     metaYieldPerBlock: 0.2,
     metaYieldPerShot: 0.35,
+    // Bonus meta currency on a level clear = this value x the cleared level
+    // number (later levels pay more), added on top of the death-formula yield.
+    levelClearBonusPerLevel: 8,
   },
 
   /* ---------- In-game upgrades (bought mid-run with in-game currency) ----------

@@ -46,6 +46,7 @@ BB.State = (function () {
     const meta = load(META_KEY);
     S.meta = meta || {
       currency: S.cfg.economy.startingMetaCurrency,
+      unlockedLevel: 1, // highest level reached; a run starts here
       levels: {
         ballsPerShot: 0,
         blockCurrency: 0,
@@ -68,23 +69,38 @@ BB.State = (function () {
       blocksDestroyed: 0,
       hpDestroyed: 0,
       over: false,
+      level: S.meta.unlockedLevel || 1, // this run's fixed level
+      cleared: false,                    // set true when the level is beaten
       levels: { chain: 0, pierce: 0, shotgun: 0, heavy: 0, angle: 0, bounces: 0, guide: 0 },
     };
   };
 
-  // Called on death. Awards meta currency, updates records, returns a
-  // breakdown for the death screen.
+  // Ends a run (death OR level clear). Awards meta currency (plus a clear
+  // bonus on a win), advances the unlocked level on a win, updates records,
+  // and returns a breakdown for the death/victory screen.
   S.endRun = function () {
     const e = S.cfg.economy;
+    const defs = S.cfg.levels.defs;
+    const level = S.run.level;
+    const cleared = !!S.run.cleared;
+
     const fromBlocks = S.run.blocksDestroyed * e.metaYieldPerBlock;
     const fromShots  = S.run.shots * e.metaYieldPerShot;
-    const earned = Math.floor(fromBlocks + fromShots);
+    const clearBonus = cleared ? e.levelClearBonusPerLevel * level : 0;
+    const earned = Math.floor(fromBlocks + fromShots) + clearBonus;
+
+    const gameBeaten = cleared && level >= defs.length;
+    if (cleared && level < defs.length) {
+      S.meta.unlockedLevel = (S.meta.unlockedLevel || 1) + 1;
+    }
+
     S.meta.currency += earned;
     S.meta.totalRuns += 1;
     if (S.run.shots > S.meta.bestShots) S.meta.bestShots = S.run.shots;
     S.saveMeta();
     return {
-      earned, fromBlocks, fromShots,
+      earned, fromBlocks, fromShots, clearBonus,
+      cleared, level, gameBeaten,
       shots: S.run.shots,
       blocks: S.run.blocksDestroyed,
       best: S.meta.bestShots,

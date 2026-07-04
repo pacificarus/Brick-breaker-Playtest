@@ -90,6 +90,8 @@ body {
   padding-top: 24px;
 }
 #screen-death h2 { margin: 0; color: #ff7a8a; }
+#screen-death h2.win { color: #38a169; }
+#death-banner { color: #ffd700; font-weight: bold; }
 #death-stats .stat { text-align: center; margin: 2px 0; }
 #death-stats .earn b { color: #c58bff; }
 .bank { font-size: 16px; }
